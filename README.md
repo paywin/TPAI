@@ -6,6 +6,8 @@ Teleprompter para Windows com controle do operador, tela independente de apresen
 
 Esta versão é uma prova de conceito funcional, não homologada para transmissão ao vivo. O motor local, o simulador, a persistência e o frontend foram executados e testados. A precisão em uma leitura contínua de um apresentador em português ainda precisa de validação em estúdio. Gemini é experimental e não foi testado com uma chave real. Veja o [relatório de validação](docs/validation.md).
 
+**Windows:** [baixar o instalador 0.1.0 no GitHub Actions](https://github.com/paywin/TPAI/actions/runs/39892024392/artifacts/12475308256) (ZIP com `PULSO_0.1.0_x64-setup.exe`, aproximadamente 75 MB; pode exigir login no GitHub). [Compilação e testes aprovados](https://github.com/paywin/TPAI/actions/runs/39892024392). A instalação e o uso em um Windows limpo ainda não foram homologados.
+
 ## Executar no Windows
 
 Requisitos: Windows x64, Python 3.11+ (validado com 3.12), Node.js 20.19+ com npm, microfone. Para compilar o instalador: Rust estável MSVC, Microsoft C++ Build Tools e WebView2.
@@ -91,7 +93,7 @@ A disponibilidade de modelos, quotas e cobrança depende do projeto da API. Uma 
 
 O motor fica em `dist/pulso-engine.exe`. Execute na raiz do projeto para usar o modelo em `models/`, ou defina `VOSK_MODEL_PATH`. Ele serve a interface em http://127.0.0.1:8765. O instalador Tauri inclui esse motor como processo auxiliar e o modelo português como recurso. O aplicativo encerra o processo auxiliar ao sair. Saída esperada: `frontend/src-tauri/target/release/bundle/nsis/`.
 
-O workflow de Windows executa testes e tenta gerar o instalador em GitHub Actions; confira o resultado da execução antes de considerar um artefato disponível. Os binários não são assinados digitalmente. O modelo fica fora do Git e é baixado durante a preparação.
+O workflow de Windows executa testes e gera o instalador em GitHub Actions. A versão 0.1.0 foi compilada com sucesso no commit `a2394726be08cadd673313919e84defa134803b3`. Os artefatos do Actions têm retenção limitada; preserve uma cópia do ZIP. Os binários não são assinados digitalmente. O modelo fica fora do Git e é baixado durante a preparação.
 
 ## Estrutura
 
