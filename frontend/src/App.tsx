@@ -1,12 +1,12 @@
+import { uid } from "./id";
 import { useEffect, useRef, useState } from "react";
 import { Block, Script, Settings, words } from "./types";
 import { initial } from "./seed";
-import { api, validateImport } from "./storage";
+import { api, cacheGet, validateImport } from "./storage";
 import { useSession } from "./session";
 import Prompter from "./Prompter";
 import "./App.css";
 
-const uid = () => crypto.randomUUID();
 const stateNames = {
   MANUAL: "Manual",
   READING: "Acompanhando",
@@ -32,6 +32,7 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [health, setHealth] = useState<{vosk_ready: boolean; gemini_configured: boolean} | null>(null);
   const [simulation, setSimulation] = useState("");
   const file = useRef<HTMLInputElement>(null);
   const stateRef = useRef(state);
@@ -46,22 +47,37 @@ export default function App() {
     const load = async () => {
       try {
         let loaded = await api<Script[]>("scripts");
-        if (!loaded.length && localStorage.getItem("pulso-web-initialized") !== "yes") {
+        if (localStorage.getItem("pulso-server-migrated") !== "yes") {
+          const cached = await cacheGet<Script[]>("scripts").catch(() => undefined);
+          for (const script of cached ?? []) {
+            if (!loaded.some(s => s.id === script.id)) {
+              await api("scripts/" + script.id, "PUT", script);
+              loaded.push(script);
+            }
+          }
+          localStorage.setItem("pulso-server-migrated", "yes");
+        }
+        if (!loaded.length && localStorage.getItem("pulso-server-initialized") !== "yes") {
           let legacy: Script[] = [];
           try { legacy = validateImport(JSON.parse(localStorage.getItem("pulso-scripts-v1") || "[]")); } catch { /* Keep original data intact. */ }
           loaded = legacy.length ? legacy : initial;
           for (const script of loaded) await api("scripts/" + script.id, "PUT", script);
         }
-        localStorage.setItem("pulso-web-initialized", "yes");
+        localStorage.setItem("pulso-server-initialized", "yes");
         if (!cancelled) setScripts(loaded);
-      } catch {
-        if (!cancelled) setNotice("Não foi possível acessar o armazenamento. Verifique as permissões do navegador.");
+      } catch (error) {
+        if (!cancelled) setNotice(String(error));
       }
     };
     void load();
     window.addEventListener("focus", load);
     return () => { cancelled = true; window.removeEventListener("focus", load); };
   }, [presenter]);
+  useEffect(() => {
+    const check = () => api<{vosk_ready: boolean; gemini_configured: boolean}>("health").then(setHealth).catch(() => setHealth(null));
+    void check(); const timer = setInterval(check, 5000);
+    return () => clearInterval(timer);
+  }, []);
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
       if (dirty) {
@@ -168,7 +184,7 @@ export default function App() {
       setNotice(
         connected
           ? "Roteiro salvo."
-          : "Salvo neste navegador.",
+          : "Salvo no servidor local.",
       );
       if (present) {
         send({ type: "load", script: saved });
@@ -244,7 +260,7 @@ export default function App() {
         <span className="edition">TELEPROMPTER / WEB</span>
         <div className="connection">
           <i className={connected ? "on" : ""} />
-          {connected ? "Pronto no navegador" : "Modo local"}
+          {health ? "Backend conectado" : "Backend indisponível"}
         </div>
       </header>
       <div className="workspace">
@@ -276,11 +292,13 @@ export default function App() {
             <small>
               Controle local
               <br />
-              PULSO Web v0.2
+              PULSO Web v0.3
             </small>
           </div>
         </nav>
         <main>
+          {!window.isSecureContext && <div className="notice" role="alert">Este endereço HTTP não permite microfone. Neste computador, <a href={`http://localhost:${location.port || "8787"}/`}>abra por localhost</a>. Para acessar de outro dispositivo, configure HTTPS.</div>}
+
           {notice && (
             <div role="status" className="notice">
               {notice}
@@ -402,7 +420,7 @@ export default function App() {
               <div className="library-foot">
                 <span>ARMAZENAMENTO LOCAL</span>
                 <p>
-                  Roteiros no seu computador. Exportação em JSON para transporte
+                  Roteiros no servidor local. Exportação em JSON para transporte
                   e backup.
                 </p>
               </div>
@@ -739,7 +757,8 @@ export default function App() {
                 </section>
                 <aside className="settings-panel">
                   <div className="section-label">ENTRADA DE ÁUDIO</div>
-                  {!speechAvailable && <p className="help">Este navegador não oferece reconhecimento de voz. Use o modo manual ou abra em Chrome/Edge com HTTPS.</p>}
+                  <p className="help" role="status">{!health ? "Servidor desconectado: execute npm start na raiz." : state.settings.provider === "gemini" ? (health.gemini_configured ? "Chave Gemini configurada no servidor." : "Gemini sem chave: preencha GEMINI_API_KEY no .env e reinicie.") : (health.vosk_ready ? "Modelo Vosk instalado e disponível." : "Modelo local ausente: execute npm run setup.")}</p>
+                  {!speechAvailable && <p className="help">Para liberar o microfone, abra localhost neste computador ou use HTTPS em outro dispositivo.</p>}
                   <label>
                     Reconhecimento
                     <select
@@ -750,23 +769,25 @@ export default function App() {
                         })
                       }
                     >
-                      <option value="browser">Navegador · português</option>
+                      <option value="vosk">Vosk · IA local sem chave</option>
+                      <option value="gemini">Gemini · API do servidor</option>
                       <option value="simulator">Simulador · sem áudio</option>
                     </select>
                   </label>
                   {state.settings.provider !== "simulator" ? (
                     <>
-                      <p className="help">Microfone selecionado nas permissões do navegador. O reconhecimento pode enviar áudio ao serviço do navegador e exigir internet.</p>
-                      <p className="audio-status" role="status">{state.audio ? "● Microfone ligado" : "○ Microfone desligado"}</p>
+                      <p className="help">O microfone do navegador envia áudio ao backend. Vosk processa localmente; Gemini envia áudio ao Google usando a chave do servidor.</p>
+                      <meter aria-label="Nível do microfone" min={0} max={0.25} value={state.level} style={{width: "100%"}} />
+                      <p className="audio-status" role="status">{state.audioStarting ? "Conectando ao microfone e à IA…" : state.audio ? "● Microfone ligado" : "○ Microfone desligado"}</p>
                       <button
                         disabled={!connected}
                         onClick={() =>
                           send({
-                            type: state.audio ? "audio_stop" : "audio_start",
+                            type: state.audio || state.audioStarting ? "audio_stop" : "audio_start",
                           })
                         }
                       >
-                        {state.audio ? "Desligar microfone" : "Ligar microfone"}
+                        {state.audioStarting ? "Cancelar conexão" : state.audio ? "Desligar microfone" : "Ligar microfone"}
                       </button>
                     </>
                   ) : (
@@ -883,7 +904,7 @@ export default function App() {
         <span>PULSO / ESTÚDIO DE LEITURA</span>
         <span>
           {connected
-            ? "IndexedDB · salvo neste navegador"
+            ? "SQLite · servidor local"
             : "IndexedDB · cópia local"}{" "}
           <i /> {new Date().getFullYear()}
         </span>

@@ -1,3 +1,4 @@
+import { uid } from "./id";
 import { useEffect, useRef, useState } from "react";
 import { defaults, Session, words } from "./types";
 import { ScriptTracker } from "./tracker";
@@ -12,7 +13,7 @@ export function useSession(presenter = false) {
   const stopSpeech = useRef<(() => void) | null>(null);
   const generation = useRef(0);
   const silenceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const sessionId = useRef(presenter ? new URLSearchParams(location.search).get("session") ?? "missing" : crypto.randomUUID());
+  const sessionId = useRef(presenter ? new URLSearchParams(location.search).get("session") ?? "missing" : uid());
   const publish = (next: Session) => {
     current.current = next;
     setState(next);
@@ -23,10 +24,12 @@ export function useSession(presenter = false) {
     stopSpeech.current?.();
     stopSpeech.current = null;
     clearTimeout(silenceTimer.current);
+    silenceTimer.current = undefined;
   };
   const scheduleSilence = () => {
     clearTimeout(silenceTimer.current);
     silenceTimer.current = setTimeout(() => {
+      silenceTimer.current = undefined;
       tracker.current.silence();
       publish({ ...current.current, reading: { ...tracker.current.reading } });
     }, current.current.settings.silenceMs);
@@ -56,12 +59,12 @@ export function useSession(presenter = false) {
     let next = { ...current.current, error: "" };
     if (data.type === "load") {
       stop();
-      next = { ...next, script: data.script as Session["script"], audio: false, playing: false, transcript: null };
+      next = { ...next, script: data.script as Session["script"], audio: false, audioStarting: false, playing: false, transcript: null };
       tracker.current = new ScriptTracker(words(next.script));
     }
     if (data.type === "settings") {
       const patch = data.settings as Partial<Session["settings"]>;
-      if (patch.provider && patch.provider !== next.settings.provider) { stop(); next.audio = false; tracker.current.manual(); }
+      if (patch.provider && patch.provider !== next.settings.provider) { stop(); next.audio = false; next.audioStarting = false; tracker.current.manual(); }
       next.settings = { ...next.settings, ...patch };
     }
     if (data.type === "manual") {
@@ -79,27 +82,32 @@ export function useSession(presenter = false) {
       scheduleSilence();
     }
     if (data.type === "silence") tracker.current.silence();
-    if (data.type === "audio_stop") { stop(); next.audio = false; next.playing = false; tracker.current.manual(); }
+    if (data.type === "audio_stop") { stop(); next.audio = false; next.audioStarting = false; next.level = 0; next.playing = false; tracker.current.manual(); }
     if (data.type === "audio_start") {
       stop();
+      next.audioStarting = true;
       const version = generation.current;
       try {
-        stopSpeech.current = startSpeech({
-          ready() { if (version === generation.current) publish({ ...current.current, audio: true, error: "" }); },
+        stopSpeech.current = startSpeech(next.settings.provider === "gemini" ? "gemini" : "vosk", {
+          ready() { if (version === generation.current) publish({ ...current.current, audio: true, audioStarting: false, error: "" }); },
           result(text, final, confidence, id) {
             if (version !== generation.current) return;
             tracker.current.transcript(text, id);
             publish({ ...current.current, transcript: {text, final, confidence}, reading: {...tracker.current.reading} });
-            scheduleSilence();
           },
-          silence() { if (version === generation.current) scheduleSilence(); },
+          voice(active, level) {
+            if (version !== generation.current) return;
+            publish({ ...current.current, level });
+            if (active) scheduleSilence();
+            else if (!silenceTimer.current) scheduleSilence();
+          },
           error(message) {
             if (version !== generation.current) return;
             stop(); tracker.current.manual();
-            publish({ ...current.current, audio: false, playing: false, error: message, reading: {...tracker.current.reading} });
+            publish({ ...current.current, audio: false, audioStarting: false, playing: false, error: message, reading: {...tracker.current.reading} });
           },
         });
-      } catch (e) { next.error = e instanceof Error ? e.message : String(e); next.audio = false; }
+      } catch (e) { next.error = e instanceof Error ? e.message : String(e); next.audio = false; next.audioStarting = false; }
     }
     next.reading = { ...tracker.current.reading };
     publish(next);

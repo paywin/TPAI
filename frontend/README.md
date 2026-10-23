@@ -1,3 +1,3 @@
-# PULSO Web
+# PULSO frontend
 
-Veja o [README principal](../README.md). Execute `npm ci` e `npm run dev` nesta pasta.
+Execute `npm run setup` e `npm start` na **raiz** para iniciar também o backend. Veja o [README principal](../README.md).

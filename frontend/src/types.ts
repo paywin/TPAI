@@ -18,7 +18,7 @@ export type Settings = {
   mirror: boolean;
   guide: number;
   speed: number;
-  provider: "browser" | "simulator";
+  provider: "vosk" | "gemini" | "simulator";
   device: number | null;
   silenceMs: number;
 };
@@ -33,6 +33,7 @@ export type Session = {
   settings: Settings;
   reading: Reading;
   audio: boolean;
+  audioStarting: boolean;
   level: number;
   transcript: {
     text: string;
@@ -49,12 +50,13 @@ export const defaults: Session = {
     mirror: false,
     guide: 35,
     speed: 35,
-    provider: "browser",
+    provider: "vosk",
     device: null,
     silenceMs: 650,
   },
   reading: { state: "MANUAL", position: 0, confidence: 0, latency_ms: 0 },
   audio: false,
+  audioStarting: false,
   level: 0,
   transcript: null,
   error: "",

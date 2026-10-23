@@ -24,3 +24,5 @@ work/
 frontend/src-tauri/icons/generated/
 
 .test-build/
+
+data/

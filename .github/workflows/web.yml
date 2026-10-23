@@ -1,17 +1,12 @@
-name: Web build and publish
+name: Web and backend validation
 on:
   push:
     branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
-  pages: write
-  id-token: write
-concurrency:
-  group: pages
-  cancel-in-progress: true
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,26 +15,18 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r backend/requirements-test.txt
       - run: npm ci
         working-directory: frontend
       - run: npm test
         working-directory: frontend
+      - run: python -m pytest backend/tests -q
       - run: npm run build
         working-directory: frontend
       - uses: actions/upload-artifact@v4
         with:
-          name: pulso-web
+          name: pulso-frontend-build
           path: frontend/dist
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: frontend/dist
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/configure-pages@v5
-      - uses: actions/deploy-pages@v4
-        id: deployment

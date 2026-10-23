@@ -6,7 +6,14 @@
     <title>PULSO — Estúdio de leitura</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root" style="min-height:100vh">Carregando PULSO…</div>
+    <noscript>Ative JavaScript para usar o PULSO.</noscript>
+    <script>
+      setTimeout(function () {
+        var root = document.getElementById('root');
+        if (root && !root.dataset.mounted) root.textContent = 'Não foi possível carregar o PULSO. Execute npm start na raiz do projeto e abra http://localhost:8787. Não abra index.html diretamente.';
+      }, 12000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
