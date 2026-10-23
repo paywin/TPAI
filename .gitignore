@@ -21,3 +21,4 @@ frontend/src-tauri/binaries/*
 .DS_Store
 work/
 .ruff_cache/
+frontend/src-tauri/icons/generated/

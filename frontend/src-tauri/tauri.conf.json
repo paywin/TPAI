@@ -26,9 +26,16 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "icon": [],
-    "externalBin": ["binaries/pulso-engine"],
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/generated/icon.ico",
+      "icons/generated/icon.png"
+    ],
+    "externalBin": [
+      "binaries/pulso-engine"
+    ],
     "resources": {
       "../../models/vosk-model-small-pt-0.3/": "models/vosk-model-small-pt-0.3/"
     }
