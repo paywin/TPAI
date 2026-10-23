@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop",
+  "description": "Operator and presenter windows, without shell access from JavaScript",
+  "windows": ["main", "presenter"],
+  "permissions": [
+    "core:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-set-focus",
+    "core:window:allow-available-monitors",
+    "core:window:allow-set-fullscreen"
+  ]
+}
