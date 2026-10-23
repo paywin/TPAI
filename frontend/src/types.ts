@@ -18,7 +18,7 @@ export type Settings = {
   mirror: boolean;
   guide: number;
   speed: number;
-  provider: "vosk" | "gemini" | "simulator";
+  provider: "browser" | "simulator";
   device: number | null;
   silenceMs: number;
 };
@@ -49,7 +49,7 @@ export const defaults: Session = {
     mirror: false,
     guide: 35,
     speed: 35,
-    provider: "vosk",
+    provider: "browser",
     device: null,
     silenceMs: 650,
   },

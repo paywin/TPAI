@@ -1,10 +1,11 @@
+:root { color-scheme: dark; }
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
-  background: #f4f3ef;
-  color: #252825;
+  background: #0b1018;
+  color: #eef2fa;
   font-family:
     Segoe UI,
     Arial,
@@ -34,7 +35,7 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 2px solid #a85b35;
+  outline: 2px solid #95a8ff;
 }
 button {
   transition: background 0.15s;
@@ -43,5 +44,5 @@ a {
   color: inherit;
 }
 ::selection {
-  background: #e9c9b5;
+  background: #344675;
 }

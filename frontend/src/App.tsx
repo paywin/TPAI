@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Block, Script, Settings, words } from "./types";
 import { initial } from "./seed";
-import { api, cacheGet, cachePut, validateImport } from "./storage";
+import { api, validateImport } from "./storage";
 import { useSession } from "./session";
 import Prompter from "./Prompter";
 import "./App.css";
@@ -23,7 +23,7 @@ const newBlock = (): Block => ({
 });
 export default function App() {
   const presenter = location.hash === "#presenter";
-  const { state, connected, rtt, send } = useSession(presenter);
+  const { state, connected, send, sessionId, speechAvailable } = useSession(presenter);
   const [scripts, setScripts] = useState<Script[]>([]);
   const [draft, setDraft] = useState<Script | null>(null);
   const [active, setActive] = useState(0);
@@ -32,17 +32,7 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [devices, setDevices] = useState<{ id: number; name: string }[]>([]);
   const [simulation, setSimulation] = useState("");
-  const [monitors, setMonitors] = useState<
-    {
-      name: string;
-      position: { x: number; y: number };
-      size: { width: number; height: number };
-    }[]
-  >([]);
-  const [monitor, setMonitor] = useState(0);
-  const [offline, setOffline] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -53,67 +43,25 @@ export default function App() {
   useEffect(() => {
     if (presenter) return;
     let cancelled = false;
-    (async () => {
+    const load = async () => {
       try {
-        const cached = await cacheGet<Script[]>("scripts");
-        if (!connected) {
-          if (!cancelled) {
-            setScripts(cached ?? initial);
-            setOffline(true);
-          }
-          return;
+        let loaded = await api<Script[]>("scripts");
+        if (!loaded.length && localStorage.getItem("pulso-web-initialized") !== "yes") {
+          let legacy: Script[] = [];
+          try { legacy = validateImport(JSON.parse(localStorage.getItem("pulso-scripts-v1") || "[]")); } catch { /* Keep original data intact. */ }
+          loaded = legacy.length ? legacy : initial;
+          for (const script of loaded) await api("scripts/" + script.id, "PUT", script);
         }
-        const remote = await api<Script[]>("scripts");
-        let loaded = remote;
-        if (cached && (await cacheGet<boolean>("pending"))) {
-          loaded = [
-            ...cached,
-            ...remote.filter((s) => !cached.some((c) => c.id === s.id)),
-          ];
-          for (const s of cached) await api("scripts/" + s.id, "PUT", s);
-          await cachePut("pending", false);
-        }
-        if (!loaded.length) {
-          let old: Script[] = [];
-          try {
-            const legacy = JSON.parse(
-              localStorage.getItem("pulso-scripts-v1") || "[]",
-            );
-            old = validateImport(legacy).map((s, i) => ({
-              ...s,
-              id: typeof legacy[i]?.id === "string" ? legacy[i].id : s.id,
-            }));
-          } catch {
-            /* Legacy data stays intact. */
-          }
-          loaded = cached ?? (old.length ? old : initial);
-          for (const s of loaded) await api("scripts/" + s.id, "PUT", s);
-        }
-        if (!cancelled) {
-          setScripts(loaded);
-          setOffline(false);
-        }
-        await cachePut("scripts", loaded);
+        localStorage.setItem("pulso-web-initialized", "yes");
+        if (!cancelled) setScripts(loaded);
       } catch {
-        const cached = await cacheGet<Script[]>("scripts").catch(
-          () => undefined,
-        );
-        if (!cancelled) {
-          setScripts(cached ?? initial);
-          setOffline(true);
-          setNotice(
-            "Biblioteca local disponível. Reconecte o motor para sincronizar os roteiros.",
-          );
-        }
+        if (!cancelled) setNotice("Não foi possível acessar o armazenamento. Verifique as permissões do navegador.");
       }
-      api<{ id: number; name: string }[]>("devices")
-        .then(setDevices)
-        .catch(() => {});
-    })();
-    return () => {
-      cancelled = true;
     };
-  }, [presenter, connected]);
+    void load();
+    window.addEventListener("focus", load);
+    return () => { cancelled = true; window.removeEventListener("focus", load); };
+  }, [presenter]);
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
       if (dirty) {
@@ -199,18 +147,8 @@ export default function App() {
   };
   const persist = async (s: Script) => {
     const saved = { ...s, updated: new Date().toISOString() };
-    let local = false;
-    try {
-      await api("scripts/" + saved.id, "PUT", saved);
-    } catch (error) {
-      if (connected) throw error;
-      local = true;
-    }
-    const list = [saved, ...scripts.filter((x) => x.id !== saved.id)];
-    await cachePut("scripts", list);
-    await cachePut("pending", local);
-    setScripts(list);
-    setOffline(local);
+    await api("scripts/" + saved.id, "PUT", saved);
+    setScripts(await api<Script[]>("scripts"));
     return saved;
   };
   const save = async (present = false) => {
@@ -230,7 +168,7 @@ export default function App() {
       setNotice(
         connected
           ? "Roteiro salvo."
-          : "Salvo neste dispositivo. Sincronização pendente.",
+          : "Salvo neste navegador.",
       );
       if (present) {
         send({ type: "load", script: saved });
@@ -267,62 +205,20 @@ export default function App() {
     try {
       const imported = validateImport(JSON.parse(await f.text()));
       for (const s of imported) await api("scripts/" + s.id, "PUT", s);
-      const all = [...imported, ...scripts];
-      await cachePut("scripts", all);
-      setScripts(all);
+      setScripts(await api<Script[]>("scripts"));
       setNotice(`${imported.length} roteiro(s) importado(s).`);
     } catch (e) {
       setNotice(String(e));
     }
   };
-  const openPresenter = async () => {
-    try {
-      if ("__TAURI_INTERNALS__" in window) {
-        const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-        const old = await WebviewWindow.getByLabel("presenter");
-        if (old) {
-          await old.setFocus();
-          return;
-        }
-        const screen = monitors[monitor];
-        new WebviewWindow("presenter", {
-          url: "/#presenter",
-          title: "PULSO · Apresentador",
-          width: screen?.size.width || 1280,
-          height: screen?.size.height || 720,
-          x: screen?.position.x,
-          y: screen?.position.y,
-          fullscreen: true,
-        });
-      } else {
-        const opened = window.open(
-          "/#presenter",
-          "pulso-presenter",
-          "popup,width=1280,height=720",
-        );
-        if (!opened)
-          setNotice(
-            "O navegador bloqueou a janela. Permita pop-ups e tente novamente.",
-          );
-      }
-    } catch {
-      setNotice("Não foi possível abrir a tela do apresentador.");
-    }
+  const openPresenter = () => {
+    const url = new URL(location.href);
+    url.hash = "presenter";
+    url.searchParams.set("session", sessionId);
+    if (!window.open(url.href, `pulso-presenter-${sessionId}`, "popup,width=1280,height=720"))
+      setNotice("Permita pop-ups para abrir a tela do apresentador.");
   };
-  const findMonitors = async () => {
-    if ("__TAURI_INTERNALS__" in window) {
-      const { availableMonitors } = await import("@tauri-apps/api/window");
-      setMonitors(
-        (await availableMonitors()).map((m, i) => ({
-          ...m,
-          name: m.name || `Monitor ${i + 1}`,
-        })),
-      );
-    } else
-      setNotice(
-        "No navegador, arraste a janela do apresentador até o segundo monitor e dê duplo clique para tela cheia. A seleção direta de monitor está disponível no aplicativo Windows.",
-      );
-  };
+  const findMonitors = () => setNotice("Arraste a janela do apresentador até o segundo monitor. Dê duplo clique no texto para entrar em tela cheia.");
   if (presenter)
     return (
       <div
@@ -334,7 +230,7 @@ export default function App() {
         <Prompter session={state} />
         {!connected && (
           <div className="presenter-status">
-            Controle local · motor desconectado
+            Aguardando o painel do operador
           </div>
         )}
       </div>
@@ -345,10 +241,10 @@ export default function App() {
         <button className="brand" onClick={() => changePage("library")}>
           <span className="brand-mark">P</span> PULSO
         </button>
-        <span className="edition">TELEPROMPTER / 01</span>
+        <span className="edition">TELEPROMPTER / WEB</span>
         <div className="connection">
           <i className={connected ? "on" : ""} />
-          {connected ? "Motor conectado" : "Modo local"}
+          {connected ? "Pronto no navegador" : "Modo local"}
         </div>
       </header>
       <div className="workspace">
@@ -380,7 +276,7 @@ export default function App() {
             <small>
               Controle local
               <br />
-              PULSO v0.1
+              PULSO Web v0.2
             </small>
           </div>
         </nav>
@@ -439,27 +335,6 @@ export default function App() {
                   }}
                 />
               </div>
-              {offline && (
-                <div className="notice">
-                  Há uma cópia local da biblioteca.
-                  <button
-                    disabled={!connected}
-                    onClick={async () => {
-                      try {
-                        for (const s of scripts)
-                          await api("scripts/" + s.id, "PUT", s);
-                        await cachePut("pending", false);
-                        setOffline(false);
-                        setNotice("Biblioteca sincronizada.");
-                      } catch {
-                        setNotice("Não foi possível sincronizar.");
-                      }
-                    }}
-                  >
-                    Sincronizar com o motor
-                  </button>
-                </div>
-              )}
               <div className="script-table">
                 <div className="table-head">
                   <span>ROTEIRO / PROGRAMA</span>
@@ -697,15 +572,13 @@ export default function App() {
                     if (confirm(`Excluir “${draft.title}”?`)) {
                       try {
                         await api("scripts/" + draft.id, "DELETE");
-                        const list = scripts.filter((s) => s.id !== draft.id);
-                        await cachePut("scripts", list);
-                        setScripts(list);
+                        setScripts(await api<Script[]>("scripts"));
                         setDirty(false);
                         setDraft(null);
                         setPage("library");
                       } catch {
                         setNotice(
-                          "Não foi possível excluir. Reconecte o motor.",
+                          "Não foi possível excluir. Tente novamente.",
                         );
                       }
                     }
@@ -813,10 +686,9 @@ export default function App() {
                       </strong>
                     </div>
                     <div>
-                      <span>CONEXÃO</span>
+                      <span>EXECUÇÃO</span>
                       <strong>
-                        {connected ? rtt : "—"}
-                        <small> ms</small>
+                        <small>Navegador</small>
                       </strong>
                     </div>
                   </div>
@@ -867,6 +739,7 @@ export default function App() {
                 </section>
                 <aside className="settings-panel">
                   <div className="section-label">ENTRADA DE ÁUDIO</div>
+                  {!speechAvailable && <p className="help">Este navegador não oferece reconhecimento de voz. Use o modo manual ou abra em Chrome/Edge com HTTPS.</p>}
                   <label>
                     Reconhecimento
                     <select
@@ -877,43 +750,14 @@ export default function App() {
                         })
                       }
                     >
-                      <option value="vosk">Vosk · local</option>
-                      <option value="gemini">Gemini Live · experimental</option>
+                      <option value="browser">Navegador · português</option>
                       <option value="simulator">Simulador · sem áudio</option>
                     </select>
                   </label>
                   {state.settings.provider !== "simulator" ? (
                     <>
-                      <label>
-                        Microfone
-                        <select
-                          value={state.settings.device ?? ""}
-                          onChange={(e) =>
-                            settings({
-                              device:
-                                e.target.value === ""
-                                  ? null
-                                  : Number(e.target.value),
-                            })
-                          }
-                        >
-                          <option value="">Padrão do Windows</option>
-                          {devices.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="audio-meter">
-                        <meter
-                          aria-label="Nível do microfone"
-                          min={0}
-                          max={0.25}
-                          value={state.level}
-                        />
-                        <span>{state.audio ? "CAPTURANDO" : "DESLIGADO"}</span>
-                      </div>
+                      <p className="help">Microfone selecionado nas permissões do navegador. O reconhecimento pode enviar áudio ao serviço do navegador e exigir internet.</p>
+                      <p className="audio-status" role="status">{state.audio ? "● Microfone ligado" : "○ Microfone desligado"}</p>
                       <button
                         disabled={!connected}
                         onClick={() =>
@@ -924,13 +768,6 @@ export default function App() {
                       >
                         {state.audio ? "Desligar microfone" : "Ligar microfone"}
                       </button>
-                      {state.settings.provider === "gemini" && (
-                        <p className="help">
-                          Envia áudio ao Google. Requer chave e modelo no
-                          backend; pode gerar custos. Integração ainda não
-                          validada com API real.
-                        </p>
-                      )}
                     </>
                   ) : (
                     <div className="simulator">
@@ -1032,21 +869,6 @@ export default function App() {
                     />
                   </label>
                   <button onClick={findMonitors}>Identificar telas</button>
-                  {monitors.length > 0 && (
-                    <label>
-                      Tela de saída
-                      <select
-                        value={monitor}
-                        onChange={(e) => setMonitor(Number(e.target.value))}
-                      >
-                        {monitors.map((m, i) => (
-                          <option key={i} value={i}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
                   <p className="help">
                     Espaço: rolar / pausar
                     <br />↑ ↓: ajustar posição · Esc: assumir manual
@@ -1061,7 +883,7 @@ export default function App() {
         <span>PULSO / ESTÚDIO DE LEITURA</span>
         <span>
           {connected
-            ? "SQLite · armazenamento local"
+            ? "IndexedDB · salvo neste navegador"
             : "IndexedDB · cópia local"}{" "}
           <i /> {new Date().getFullYear()}
         </span>

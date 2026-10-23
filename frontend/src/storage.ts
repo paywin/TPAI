@@ -1,6 +1,4 @@
 import type { Script } from "./types";
-export const API_BASE =
-  "__TAURI_INTERNALS__" in window ? "http://127.0.0.1:8765" : "";
 const database = new Promise<IDBDatabase>((resolve, reject) => {
   const request = indexedDB.open("pulso", 1);
   request.onupgradeneeded = () => request.result.createObjectStore("data");
@@ -29,17 +27,29 @@ export async function api<T>(
   method = "GET",
   data?: unknown,
 ): Promise<T> {
-  const response = await fetch(API_BASE + "/api/" + path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: data === undefined ? undefined : JSON.stringify(data),
-    signal: AbortSignal.timeout(5000),
+  // Keep CRUD atomic: other tabs cannot overwrite an in-flight update.
+  const db = await database;
+  return new Promise<T>((resolve, reject) => {
+    const tx = db.transaction("data", method === "GET" ? "readonly" : "readwrite");
+    const store = tx.objectStore("data");
+    const request = store.get("scripts");
+    let result: unknown;
+    request.onsuccess = () => {
+      const list: Script[] = request.result ?? [];
+      const id = path.startsWith("scripts/") ? path.slice(8) : null;
+      if (method === "GET") result = list;
+      else if (method === "PUT" && id) {
+        result = data;
+        store.put([data as Script, ...list.filter(s => s.id !== id)], "scripts");
+      } else if (method === "DELETE" && id) {
+        store.put(list.filter(s => s.id !== id), "scripts");
+        result = { ok: true };
+      } else { tx.abort(); return; }
+    };
+    tx.oncomplete = () => resolve(result as T);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error("Não foi possível salvar no navegador."));
   });
-  if (!response.ok)
-    throw new Error(
-      "Falha ao salvar ou carregar dados. Verifique o motor local e os campos.",
-    );
-  return response.json();
 }
 export function validateImport(input: unknown): Script[] {
   const list = Array.isArray(input) ? input : [input];

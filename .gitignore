@@ -22,3 +22,5 @@ frontend/src-tauri/binaries/*
 work/
 .ruff_cache/
 frontend/src-tauri/icons/generated/
+
+.test-build/
