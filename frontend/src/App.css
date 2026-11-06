@@ -5,6 +5,9 @@
   --border: #29394f;
   --paper: #121d2e;
 }
+.block-list button[draggable="true"] { cursor: grab; }
+.block-list button.dragging { opacity: .45; }
+.block-list button.drop-target { outline: 2px solid var(--accent); outline-offset: 2px; }
 .topbar {
   height: 78px;
   display: flex;

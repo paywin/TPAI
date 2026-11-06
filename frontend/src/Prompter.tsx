@@ -81,6 +81,11 @@ export default function Prompter({
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
   }, []);
+  useEffect(() => {
+    // A saved edit can move the current block even while paused or silent.
+    y.current = target.current;
+    if (viewport.current) viewport.current.scrollTop = Math.max(0, y.current);
+  }, [tokens]);
   return (
     <div className={"prompter-wrap " + (small ? "small" : "")}>
       <div

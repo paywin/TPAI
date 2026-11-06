@@ -27,6 +27,8 @@ export default function App() {
   const [scripts, setScripts] = useState<Script[]>([]);
   const [draft, setDraft] = useState<Script | null>(null);
   const [active, setActive] = useState(0);
+  const [dragged, setDragged] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [page, setPage] = useState<"library" | "editor" | "studio">("library");
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState("");
@@ -108,7 +110,7 @@ export default function App() {
       last = now;
     }, 100);
     return () => clearInterval(timer);
-  }, [presenter, state.playing, state.script?.id]);
+  }, [presenter, state.playing, state.script]);
   useEffect(() => {
     if (presenter) return;
     const key = (e: KeyboardEvent) => {
@@ -161,6 +163,16 @@ export default function App() {
         ),
       });
   };
+  const moveBlock = (id: string, target: number) => {
+    if (!draft || busy) return;
+    const source = draft.blocks.findIndex(b => b.id === id);
+    if (source < 0 || target < 0 || target >= draft.blocks.length) return;
+    const selected = draft.blocks[active].id;
+    const blocks = [...draft.blocks];
+    blocks.splice(target, 0, blocks.splice(source, 1)[0]);
+    update({blocks});
+    setActive(blocks.findIndex(b => b.id === selected));
+  };
   const persist = async (s: Script) => {
     const saved = { ...s, updated: new Date().toISOString() };
     await api("scripts/" + saved.id, "PUT", saved);
@@ -179,6 +191,7 @@ export default function App() {
     setBusy(true);
     try {
       const saved = await persist(draft);
+      send({type: "saved", script: saved});
       setDraft(saved);
       setDirty(false);
       setNotice(
@@ -187,7 +200,7 @@ export default function App() {
           : "Salvo no servidor local.",
       );
       if (present) {
-        send({ type: "load", script: saved });
+        if (stateRef.current.script?.id !== saved.id) send({ type: "load", script: saved });
         setPage("studio");
       }
     } catch (e) {
@@ -450,14 +463,22 @@ export default function App() {
               <div className="editor-layout">
                 <aside className="block-list">
                   <div className="section-label">ESPELHO DO ROTEIRO</div>
+                  <p className="help">Arraste para reordenar. Pelo teclado: Alt + ↑ ou ↓. Ao salvar, a apresentação aberta é atualizada.</p>
                   {draft.blocks.map((b, i) => (
                     <button
                       key={b.id}
-                      className={i === active ? "active" : ""}
+                      draggable={!busy}
+                      onDragStart={e => { setDragged(b.id); e.dataTransfer.setData("text/plain", b.id); e.dataTransfer.effectAllowed = "move"; }}
+                      onDragOver={e => { if (dragged) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDropTarget(b.id); } }}
+                      onDrop={e => { e.preventDefault(); if (dragged) moveBlock(dragged, i); setDragged(null); setDropTarget(null); }}
+                      onDragEnd={() => { setDragged(null); setDropTarget(null); }}
+                      onKeyDown={e => { if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); moveBlock(b.id, i + (e.key === "ArrowUp" ? -1 : 1)); } }}
+                      aria-label={`${i + 1}. ${b.title}. Arraste ou use Alt e setas para reordenar`}
+                      className={`${i === active ? "active" : ""} ${dropTarget === b.id && dragged !== b.id ? "drop-target" : ""} ${dragged === b.id ? "dragging" : ""}`}
                       onClick={() => setActive(i)}
                     >
                       <span className="mono">
-                        {String(i + 1).padStart(2, "0")}
+                        ⠿ {String(i + 1).padStart(2, "0")}
                       </span>
                       <span>
                         {b.title}

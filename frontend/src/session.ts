@@ -1,4 +1,5 @@
 import { uid } from "./id";
+import { remapPosition } from "./liveScript";
 import { useEffect, useRef, useState } from "react";
 import { defaults, Session, words } from "./types";
 import { ScriptTracker } from "./tracker";
@@ -19,6 +20,14 @@ export function useSession(presenter = false) {
     setState(next);
     bus.current?.postMessage({ type: "session", state: next });
   };
+  const applySaved = (script: NonNullable<Session["script"]>) => {
+    const old = current.current;
+    if (!old.script || old.script.id !== script.id) return;
+    const position = remapPosition(old.script, script, old.reading.position);
+    tracker.current = new ScriptTracker(words(script));
+    tracker.current.reading = {...old.reading, position};
+    publish({...old, script, reading: {...tracker.current.reading}});
+  };
   const stop = () => {
     generation.current++;
     stopSpeech.current?.();
@@ -37,6 +46,8 @@ export function useSession(presenter = false) {
   useEffect(() => {
     const channel = new BroadcastChannel(`pulso:${sessionId.current}`);
     bus.current = channel;
+    const edits = new BroadcastChannel("pulso-saved-scripts");
+    edits.onmessage = e => { if (!presenter && e.data?.type === "saved") applySaved(e.data.script); };
     let lastSeen = Date.now();
     channel.onmessage = e => {
       if (presenter && e.data.type === "session") {
@@ -52,10 +63,16 @@ export function useSession(presenter = false) {
         channel.postMessage({type: "ready"});
       } else channel.postMessage({ type: "session", state: current.current });
     }, 1000);
-    return () => { stop(); clearInterval(heartbeat); channel.close(); bus.current = null; };
+    return () => { stop(); clearInterval(heartbeat); edits.close(); channel.close(); bus.current = null; };
   }, [presenter]);
   const send = (data: Record<string, unknown>) => {
     if (presenter) return;
+    if (data.type === "saved") {
+      applySaved(data.script as NonNullable<Session["script"]>);
+      const edits = new BroadcastChannel("pulso-saved-scripts");
+      edits.postMessage(data); edits.close();
+      return;
+    }
     let next = { ...current.current, error: "" };
     if (data.type === "load") {
       stop();
