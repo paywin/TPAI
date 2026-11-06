@@ -9,6 +9,15 @@
 .gesture-status { border-left: 2px solid var(--accent); padding: 10px; margin: 14px 0; font-size: 12px; background: var(--paper); }
 .gesture-status p { color: var(--muted); font-size: 11px; }
 .gesture-panel summary { cursor: pointer; font-size: 12px; padding: 12px 0; }
+.presenter-options { width: min(560px, calc(100vw - 32px)); padding: 28px; color: var(--ink); background: var(--paper); border: 1px solid var(--border); border-radius: 8px; }
+.presenter-options::backdrop { background: #030810bb; }
+.presenter-options h2 { font-size: 22px; margin: 0 0 12px; }
+.presenter-options p { color: var(--muted); font-size: 13px; }
+.orientation-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
+.orientation-options button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 22px 12px; font-size: 13px; }
+.orientation-options button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.orientation-preview { font: 28px Georgia, serif; color: var(--accent); }
+.orientation-cancel { display: block; margin: 22px 0 0 auto; }
 .block-list button[draggable="true"] { cursor: grab; }
 .block-list button.dragging { opacity: .45; }
 .block-list button.drop-target { outline: 2px solid var(--accent); outline-offset: 2px; }

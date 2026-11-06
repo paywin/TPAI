@@ -16,6 +16,7 @@ export type Script = {
 export type Settings = {
   fontSize: number;
   mirror: boolean;
+  upsideDown: boolean;
   guide: number;
   speed: number;
   provider: "vosk" | "gemini" | "simulator";
@@ -48,6 +49,7 @@ export const defaults: Session = {
   settings: {
     fontSize: 56,
     mirror: false,
+    upsideDown: false,
     guide: 35,
     speed: 35,
     provider: "vosk",

@@ -38,6 +38,7 @@ export default function App() {
   const [health, setHealth] = useState<{vosk_ready: boolean; gemini_configured: boolean} | null>(null);
   const [simulation, setSimulation] = useState("");
   const file = useRef<HTMLInputElement>(null);
+  const presenterOptions = useRef<HTMLDialogElement>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
   const sendRef = useRef(send);
@@ -116,6 +117,7 @@ export default function App() {
   useEffect(() => {
     if (presenter) return;
     const key = (e: KeyboardEvent) => {
+      if (presenterOptions.current?.open) return;
       if (
         (e.target as HTMLElement).matches("input,textarea,select") ||
         page !== "studio"
@@ -268,6 +270,26 @@ export default function App() {
     );
   return (
     <div className="app">
+      <dialog ref={presenterOptions} className="presenter-options" aria-labelledby="presenter-options-title">
+        <h2 id="presenter-options-title">Como abrir a tela do apresentador?</h2>
+        <p>Escolha a orientação para o seu monitor ou espelho.</p>
+        <div className="orientation-options">
+          {[
+            { label: "Normal", mirror: false, upsideDown: false },
+            { label: "Espelhada", mirror: true, upsideDown: false },
+            { label: "Normal de cabeça para baixo", mirror: false, upsideDown: true },
+            { label: "Espelhada de cabeça para baixo", mirror: true, upsideDown: true },
+          ].map(option => <button key={option.label} onClick={() => {
+            settings({ mirror: option.mirror, upsideDown: option.upsideDown });
+            presenterOptions.current?.close();
+            openPresenter();
+          }}>
+            <span aria-hidden="true" className="orientation-preview" style={{ transform: `rotate(${option.upsideDown ? 180 : 0}deg) scaleX(${option.mirror ? -1 : 1})` }}>Pulso</span>
+            <span>{option.label}</span>
+          </button>)}
+        </div>
+        <button className="orientation-cancel" onClick={() => presenterOptions.current?.close()}>Cancelar</button>
+      </dialog>
       <header className="topbar">
         <button className="brand" onClick={() => changePage("library")}>
           <span className="brand-mark">P</span> PULSO
@@ -640,7 +662,7 @@ export default function App() {
                     {state.script.program} · {total} palavras
                   </p>
                 </div>
-                <button className="primary" onClick={openPresenter}>
+                <button className="primary" onClick={() => presenterOptions.current?.showModal()}>
                   Abrir tela do apresentador ↗
                 </button>
               </div>
@@ -885,6 +907,10 @@ export default function App() {
                       onChange={(e) => settings({ mirror: e.target.checked })}
                     />{" "}
                     Espelhar horizontalmente
+                  </label>
+                  <label className="check">
+                    <input type="checkbox" checked={state.settings.upsideDown} onChange={e => settings({ upsideDown: e.target.checked })} />
+                    De cabeça para baixo
                   </label>
                   <label>
                     Ritmo manual{" "}

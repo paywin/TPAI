@@ -87,7 +87,9 @@ export default function Prompter({
     if (viewport.current) viewport.current.scrollTop = Math.max(0, y.current);
   }, [tokens]);
   return (
-    <div className={"prompter-wrap " + (small ? "small" : "")}>
+    <div className={"prompter-wrap " + (small ? "small" : "")} style={{
+      transform: `rotate(${session.settings.upsideDown ? 180 : 0}deg) scaleX(${session.settings.mirror ? -1 : 1})`,
+    }}>
       <div
         className="reading-line"
         style={{ top: `${session.settings.guide}%` }}
@@ -101,7 +103,6 @@ export default function Prompter({
           fontSize: small
             ? Math.max(24, session.settings.fontSize * 0.55)
             : session.settings.fontSize,
-          transform: session.settings.mirror ? "scaleX(-1)" : undefined,
         }}
       >
         <div
