@@ -5,6 +5,7 @@
   "type": "module",
   "engines": {"node": ">=22"},
   "scripts": {
+    "setup:gestures": "node scripts/run.mjs gestures",
     "setup": "node scripts/run.mjs setup",
     "setup:gemini": "node scripts/run.mjs setup:gemini",
     "start": "node scripts/run.mjs start",

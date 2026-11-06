@@ -12,6 +12,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from urllib.parse import urlparse
 from pydantic import BaseModel, Field, model_validator
 from backend.storage import Store
+from backend.gestures import router as gestures_router
 from backend.providers import ProviderError, gemini_stream, model_path, vosk_stream
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,7 @@ store = Store(data / 'pulso.db')
 ORIGINS = {'http://localhost:8787', 'http://127.0.0.1:8787', 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://testserver'}
 ORIGINS.update(o.strip() for o in os.getenv('PULSO_ORIGINS', '').split(',') if o.strip())
 app = FastAPI(title='PULSO Web backend', version='0.3.0')
+app.include_router(gestures_router)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=sorted({urlparse(o).hostname for o in ORIGINS if urlparse(o).hostname}))
 
 class Block(BaseModel):

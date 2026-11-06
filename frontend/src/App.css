@@ -5,6 +5,10 @@
   --border: #29394f;
   --paper: #121d2e;
 }
+.gesture-preview { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #060a10; border: 1px solid var(--border); transform: scaleX(-1); margin: 8px 0; }
+.gesture-status { border-left: 2px solid var(--accent); padding: 10px; margin: 14px 0; font-size: 12px; background: var(--paper); }
+.gesture-status p { color: var(--muted); font-size: 11px; }
+.gesture-panel summary { cursor: pointer; font-size: 12px; padding: 12px 0; }
 .block-list button[draggable="true"] { cursor: grab; }
 .block-list button.dragging { opacity: .45; }
 .block-list button.drop-target { outline: 2px solid var(--accent); outline-offset: 2px; }

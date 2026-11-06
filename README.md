@@ -79,3 +79,48 @@ Para proxy HTTPS, configure PULSO_ORIGINS com a origem pública e encaminhe /api
 - Fala humana ao vivo e Gemini autenticado ainda precisam de validação. Permita o microfone no navegador usado na apresentação.
 
 Referências: [Vosk](https://alphacephei.com/vosk/models), [Gemini Live Transcription](https://ai.google.dev/gemini-api/docs/live-api/live-transcribe).
+# Controle por gestos (experimental)
+
+Na raiz, execute `npm run setup:gestures` uma vez e depois `npm start`.
+Abra `http://localhost:8787`, prepare um roteiro e encontre **Controle por gestos** na apresentação.
+Selecione a câmera e a IA de imagem, clique em **Ligar câmera e testar** e permita a câmera.
+Na primeira autorização, os nomes das câmeras aparecem; desligue a câmera para escolher outra.
+O modo de teste apenas mostra o sinal reconhecido. Marque **Executar ações no roteiro** para controlar o TP.
+Configurações e câmera escolhida ficam salvas neste navegador. A câmera nunca liga automaticamente.
+
+| Sinal padrão | Ação |
+| --- | --- |
+| V com indicador e médio | Próximo bloco / página |
+| Indicador para cima | Bloco / página anterior |
+| Polegar para cima | Avançar 5 palavras |
+| Polegar para baixo | Voltar 5 palavras |
+| Palma aberta | Pausar leitura |
+| Punho fechado | Retomar leitura |
+| Duas palmas abertas | Início do roteiro |
+| Dois punhos fechados | Último bloco |
+| Polegar, indicador e mínimo estendidos | Acelerar rolagem manual |
+| Dois sinais em V | Desacelerar rolagem manual |
+
+Em **Configurar os 10 sinais**, remova uma atribuição com **Sem gesto** para liberar o sinal para outra ação.
+Não é permitido reutilizar o mesmo sinal. Para evitar mudanças em operação, desmarque a execução antes de reconfigurar.
+Mostre a mão inteira de frente, com boa iluminação. Os sete sinais simples exigem uma única mão visível.
+Os sinais duplos exigem duas mãos iguais. Outros pares são ignorados.
+Retire as mãos do quadro por pelo menos 600 ms antes de cada comando e sustente o sinal por pelo menos 900 ms
+e três reconhecimentos. Na nuvem isso leva mais tempo. Um sinal mantido não repete a ação.
+Imagens com mais de cinco segundos de atraso são descartadas. Não há gravação das imagens.
+
+**Local:** MediaPipe no backend, sem internet após a instalação. O navegador envia JPEGs ao servidor local.
+**Gemini:** configure `GEMINI_API_KEY` e `GEMINI_VISION_MODEL` (padrão `gemini-2.5-flash`) no `.env`,
+e reinicie o backend. Os quadros são enviados ao Google enquanto a câmera estiver ligada, inclusive no modo de teste.
+O modelo de imagem é separado de `GEMINI_MODEL`, usado para áudio. A chave nunca vai para o frontend.
+
+Vosk/Gemini de voz e MediaPipe/Gemini de imagem podem ser combinados independentemente.
+A câmera usa captura sem áudio, uma requisição por vez e inferência local fora do loop de áudio.
+Gestos de navegação preservam o modo de voz e o microfone; transcrições antigas são ignoradas após o salto.
+Faça uma breve pausa na fala após o gesto para iniciar um novo trecho reconhecido.
+Pausar mantém o microfone conectado mas congela o acompanhamento; retomar restaura o modo anterior.
+A câmera desliga ao sair da tela de apresentação, ao cancelar ou quando ocorre um erro.
+Para usar câmera/microfone pelo IP da rede, é necessário HTTPS; HTTP funciona em localhost.
+
+Os testes automatizados cobrem os sinais, exclusividade, confirmação/liberação, limites de navegação e arbitragem da voz.
+O teste prático com o apresentador é necessário para avaliar distância, iluminação e enquadramento da câmera.

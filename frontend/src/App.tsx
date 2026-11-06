@@ -5,6 +5,7 @@ import { initial } from "./seed";
 import { api, cacheGet, validateImport } from "./storage";
 import { useSession } from "./session";
 import Prompter from "./Prompter";
+import GestureControl from "./GestureControl";
 import "./App.css";
 
 const stateNames = {
@@ -98,6 +99,7 @@ export default function App() {
       const now = performance.now(),
         s = stateRef.current;
       if (s.playing && s.reading.state === "MANUAL") {
+        if (Math.floor(cursor) !== s.reading.position) cursor = s.reading.position;
         cursor += (s.settings.speed / 60) * Math.min((now - last) / 1000, 0.3);
         const end = Math.max(0, words(s.script).length - 1);
         if (Math.floor(cursor) !== s.reading.position || cursor >= end)
@@ -777,6 +779,7 @@ export default function App() {
                   </div>
                 </section>
                 <aside className="settings-panel">
+                  <GestureControl available={!!total} onAction={action => send({ type: 'gesture', action })} />
                   <div className="section-label">ENTRADA DE ÁUDIO</div>
                   <p className="help" role="status">{!health ? "Servidor desconectado: execute npm start na raiz." : state.settings.provider === "gemini" ? (health.gemini_configured ? "Chave Gemini configurada no servidor." : "Gemini sem chave: preencha GEMINI_API_KEY no .env e reinicie.") : (health.vosk_ready ? "Modelo Vosk instalado e disponível." : "Modelo local ausente: execute npm run setup.")}</p>
                   {!speechAvailable && <p className="help">Para liberar o microfone, abra localhost neste computador ou use HTTPS em outro dispositivo.</p>}

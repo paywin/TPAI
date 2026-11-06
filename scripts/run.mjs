@@ -40,7 +40,10 @@ const shutdown=()=>{for(const child of children) child.kill();};
 process.on('SIGINT',()=>{shutdown();process.exit(130);});
 process.on('SIGTERM',()=>{shutdown();process.exit(143);});
 try {
-  if (mode.startsWith('setup')) await setup();
+  if (mode==='gestures') {
+    await command(python(),['-m','pip','install','-r','backend/requirements-gestures.txt']);
+    await command(python(),['scripts/download_gesture_model.py']);
+  } else if (mode.startsWith('setup')) await setup();
   else if(mode==='build') await runNpm(['run','build'],path.join(root,'frontend'));
   else if(mode==='test') {
     await runNpm(['test'],path.join(root,'frontend'));

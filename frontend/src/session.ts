@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { defaults, Session, words } from "./types";
 import { ScriptTracker } from "./tracker";
 import { startSpeech, speechSupported } from "./speech";
+import { actions, gesturePosition, VoiceBarrier, type Action } from "./gestures";
 
 export function useSession(presenter = false) {
   const [state, setState] = useState<Session>(structuredClone(defaults));
@@ -13,6 +14,8 @@ export function useSession(presenter = false) {
   const bus = useRef<BroadcastChannel | null>(null);
   const stopSpeech = useRef<(() => void) | null>(null);
   const generation = useRef(0);
+  const voiceBarrier = useRef(new VoiceBarrier());
+  const resumeVoice = useRef(false);
   const silenceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const sessionId = useRef(presenter ? new URLSearchParams(location.search).get("session") ?? "missing" : uid());
   const publish = (next: Session) => {
@@ -74,8 +77,31 @@ export function useSession(presenter = false) {
       return;
     }
     let next = { ...current.current, error: "" };
+    if (data.type === 'gesture') {
+      const action = data.action as Action;
+      if (!next.script || !actions.some(([id]) => id === action)) return;
+      if (action === 'faster' || action === 'slower') {
+        next.settings = { ...next.settings, speed: Math.max(5, Math.min(150, next.settings.speed + (action === 'faster' ? 5 : -5))) };
+      } else if (action === 'pause') {
+        if (tracker.current.reading.state !== 'MANUAL' || next.playing)
+          resumeVoice.current = tracker.current.reading.state !== 'MANUAL';
+        tracker.current.manual(); next.playing = false;
+      } else if (action === 'resume') {
+        if ((resumeVoice.current || tracker.current.reading.state !== 'MANUAL') && next.audio) { tracker.current.automatic(); next.playing = false; }
+        else { tracker.current.manual(); next.playing = true; }
+      } else {
+        const automatic = tracker.current.reading.state !== 'MANUAL';
+        tracker.current.manual(gesturePosition(next, action));
+        if (automatic) tracker.current.reading.state = 'READING';
+      }
+      // Ignore in-flight speech from before the gesture, without closing the microphone.
+      voiceBarrier.current.hold(performance.now());
+      clearTimeout(silenceTimer.current); silenceTimer.current = undefined;
+      next.reading = { ...tracker.current.reading }; publish(next); return;
+    }
     if (data.type === "load") {
       stop();
+      resumeVoice.current = false;
       next = { ...next, script: data.script as Session["script"], audio: false, audioStarting: false, playing: false, transcript: null };
       tracker.current = new ScriptTracker(words(next.script));
     }
@@ -102,6 +128,7 @@ export function useSession(presenter = false) {
     if (data.type === "audio_stop") { stop(); next.audio = false; next.audioStarting = false; next.level = 0; next.playing = false; tracker.current.manual(); }
     if (data.type === "audio_start") {
       stop();
+      voiceBarrier.current = new VoiceBarrier();
       next.audioStarting = true;
       const version = generation.current;
       try {
@@ -109,6 +136,7 @@ export function useSession(presenter = false) {
           ready() { if (version === generation.current) publish({ ...current.current, audio: true, audioStarting: false, error: "" }); },
           result(text, final, confidence, id) {
             if (version !== generation.current) return;
+            if (!voiceBarrier.current.accept(id, performance.now())) return;
             tracker.current.transcript(text, id);
             publish({ ...current.current, transcript: {text, final, confidence}, reading: {...tracker.current.reading} });
           },
