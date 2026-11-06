@@ -5,6 +5,21 @@ from backend.app import app
 from backend import gestures
 
 
+@pytest.mark.parametrize('code', [400, 401, 403, 404, 429, 500, 503])
+def test_gemini_diagnostics_preserve_reason_without_leaking_secrets(code):
+    error = Exception('secret-api-key and image contents')
+    error.code = code
+    result = gestures.vision_error(error)
+    assert str(code) in result.detail
+    assert 'secret' not in result.detail
+    assert result.status_code == (429 if code == 429 else 502)
+
+
+def test_gemini_timeout_and_invalid_response():
+    assert gestures.vision_error(TimeoutError()).status_code == 504
+    assert 'JSON' in gestures.vision_error(ValueError('secret')).detail
+
+
 def test_single_double_and_ambiguous_hands():
     for signal in gestures.SINGLES:
         assert gestures.combine([(signal, .95)])['gesture'] == signal

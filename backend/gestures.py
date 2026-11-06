@@ -2,6 +2,7 @@
 import asyncio
 import io
 import json
+import logging
 import os
 import threading
 from pathlib import Path
@@ -17,6 +18,30 @@ GESTURES = SINGLES | set(DOUBLES.values())
 _recognizer = None
 _lock = threading.Lock()
 _slots = asyncio.Semaphore(2)
+
+
+def vision_error(exc):
+    # Never expose SDK exception text: it can contain credentials or request data.
+    code = str(getattr(exc, 'code', '') or '')
+    if isinstance(exc, TimeoutError):
+        return HTTPException(504, 'Gemini demorou mais de 12 segundos. Use um modelo Flash para gestos ou selecione a IA local.')
+    messages = {
+        '400': 'Gemini rejeitou a requisição (400). Confira se a chave é válida e se GEMINI_VISION_MODEL aceita imagens e saída JSON.',
+        '401': 'Gemini recusou a autenticação (401). Confira GEMINI_API_KEY no .env e reinicie o servidor.',
+        '403': 'Gemini negou acesso (403). Confira permissões/restrições da chave e acesso do projeto ao modelo.',
+        '404': 'Modelo de visão não encontrado ou indisponível para este projeto (404). Confira GEMINI_VISION_MODEL no .env.',
+        '429': 'Cota ou limite de requisições do Gemini atingido (429). Confira a cota e o faturamento no Google AI Studio; aguarde ou use a IA local.',
+        '500': 'Erro interno do serviço Gemini (500). Tente novamente ou use a IA local.',
+        '503': 'Serviço Gemini temporariamente indisponível (503). Tente novamente ou use a IA local.',
+    }
+    if code in messages:
+        return HTTPException(429 if code == '429' else 502, messages[code])
+    if isinstance(exc, (ValueError, TypeError, AttributeError)):
+        return HTTPException(502, 'Gemini retornou uma resposta sem o JSON de gestos esperado. Nenhum comando foi executado.')
+    import httpx
+    if isinstance(exc, httpx.TransportError):
+        return HTTPException(502, 'Não foi possível conectar ao Gemini. Confira internet, proxy e firewall.')
+    return HTTPException(502, 'Falha inesperada na visão Gemini. Confira a instalação do SDK e tente novamente.')
 
 
 def combine(hands):
@@ -76,9 +101,9 @@ async def gemini(raw):
               'Two_Fists, Two_Victories. For mixed hands or uncertainty return null. '
               'Do not count a two-hand pose as a one-hand pose.')
     try:
-        async with genai.Client(api_key=os.environ['GEMINI_API_KEY']).aio as client:
+        async with genai.Client(api_key=os.environ['GEMINI_API_KEY'].strip()).aio as client:
             response = await asyncio.wait_for(client.models.generate_content(
-                model=os.getenv('GEMINI_VISION_MODEL', 'gemini-2.5-flash'),
+                model=os.getenv('GEMINI_VISION_MODEL', 'gemini-2.5-flash').strip() or 'gemini-2.5-flash',
                 contents=[prompt, types.Part.from_bytes(data=raw, mime_type='image/jpeg')],
                 config=types.GenerateContentConfig(response_mime_type='application/json', temperature=0)), 12)
         data = json.loads(response.text)
@@ -88,8 +113,10 @@ async def gemini(raw):
             gesture = None
         return {'gesture': gesture, 'confidence': confidence if gesture else 0,
                 'neutral': data.get('neutral') is True and gesture is None}
-    except Exception:
-        raise HTTPException(502, 'Falha na visão Gemini. Confira chave, GEMINI_VISION_MODEL, conexão e cota.') from None
+    except Exception as exc:
+        error = vision_error(exc)
+        logging.getLogger(__name__).warning('Visão Gemini: %s', error.detail)
+        raise error from None
 
 
 @router.post('/recognize')
