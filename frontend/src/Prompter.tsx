@@ -88,7 +88,7 @@ export default function Prompter({
   }, [tokens]);
   return (
     <div className={"prompter-wrap " + (small ? "small" : "")} style={{
-      transform: `rotate(${session.settings.upsideDown ? 180 : 0}deg) scaleX(${session.settings.mirror ? -1 : 1})`,
+      transform: small ? undefined : `rotate(${session.settings.upsideDown ? 180 : 0}deg) scaleX(${session.settings.mirror ? -1 : 1})`,
     }}>
       <div
         className="reading-line"
